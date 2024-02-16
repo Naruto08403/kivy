@@ -1,137 +1,217 @@
 '''
-Button
-======
+Button Behavior
+===============
 
-.. image:: images/button.jpg
-    :align: right
+The :class:`~kivy.uix.behaviors.button.ButtonBehavior`
+`mixin <https://en.wikipedia.org/wiki/Mixin>`_ class provides
+:class:`~kivy.uix.button.Button` behavior. You can combine this class with
+other widgets, such as an :class:`~kivy.uix.image.Image`, to provide
+alternative buttons that preserve Kivy button behavior.
 
-The :class:`Button` is a :class:`~kivy.uix.label.Label` with associated actions
-that are triggered when the button is pressed (or released after a
-click/touch). To configure the button, the same properties (padding,
-font_size, etc) and
-:ref:`sizing system <kivy-uix-label-sizing-and-text-content>`
-are used as for the :class:`~kivy.uix.label.Label` class::
+For an overview of behaviors, please refer to the :mod:`~kivy.uix.behaviors`
+documentation.
 
-    button = Button(text='Hello world', font_size=14)
+Example
+-------
 
-To attach a callback when the button is pressed (clicked/touched), use
-:class:`~kivy.uix.widget.Widget.bind`::
+The following example adds button behavior to an image to make a checkbox that
+behaves like a button::
 
-    def callback(instance):
-        print('The button <%s> is being pressed' % instance.text)
+    from kivy.app import App
+    from kivy.uix.image import Image
+    from kivy.uix.behaviors import ButtonBehavior
 
-    btn1 = Button(text='Hello world 1')
-    btn1.bind(on_press=callback)
-    btn2 = Button(text='Hello world 2')
-    btn2.bind(on_press=callback)
 
-If you want to be notified every time the button state changes, you can bind
-to the :attr:`Button.state` property::
+    class MyButton(ButtonBehavior, Image):
+        def __init__(self, **kwargs):
+            super(MyButton, self).__init__(**kwargs)
+            self.source = 'atlas://data/images/defaulttheme/checkbox_off'
 
-    def callback(instance, value):
-        print('My button <%s> state is <%s>' % (instance, value))
-    btn1 = Button(text='Hello world 1')
-    btn1.bind(state=callback)
+        def on_press(self):
+            self.source = 'atlas://data/images/defaulttheme/checkbox_on'
 
-Kv Example::
+        def on_release(self):
+            self.source = 'atlas://data/images/defaulttheme/checkbox_off'
 
-    Button:
-        text: 'press me'
-        on_press: print("ouch! More gently please")
-        on_release: print("ahhh")
-        on_state:
-            print("my current state is {}".format(self.state))
 
+    class SampleApp(App):
+        def build(self):
+            return MyButton()
+
+
+    SampleApp().run()
+
+See :class:`~kivy.uix.behaviors.ButtonBehavior` for details.
 '''
 
-__all__ = ('Button', )
+__all__ = ('ButtonBehavior', )
 
-from kivy.uix.label import Label
-from kivy.properties import StringProperty, ListProperty, ColorProperty
-from kivy.uix.behaviors import ButtonBehavior
+from kivy.clock import Clock
+from kivy.config import Config
+from kivy.properties import OptionProperty, ObjectProperty, \
+    BooleanProperty, NumericProperty
+from time import time
 
+from kivy.lang import global_idmap
+from traceback import format_exc
+class ButtonBehavior(object):
+    '''
+    This `mixin <https://en.wikipedia.org/wiki/Mixin>`_ class provides
+    :class:`~kivy.uix.button.Button` behavior. Please see the
+    :mod:`button behaviors module <kivy.uix.behaviors.button>` documentation
+    for more information.
 
-class Button(ButtonBehavior, Label):
-    '''Button class, see module documentation for more information.
-
-    .. versionchanged:: 1.8.0
-        The behavior / logic of the button has been moved to
-        :class:`~kivy.uix.behaviors.ButtonBehaviors`.
+    :Events:
+        `on_press`
+            Fired when the button is pressed.
+        `on_release`
+            Fired when the button is released (i.e. the touch/click that
+            pressed the button goes away).
 
     '''
 
-    background_color = ColorProperty([1, 1, 1, 1])
-    '''Background color, in the format (r, g, b, a).
+    state = OptionProperty('normal', options=('normal', 'down'))
+    '''The state of the button, must be one of 'normal' or 'down'.
+    The state is 'down' only when the button is currently touched/clicked,
+    otherwise its 'normal'.
 
-    This acts as a *multiplier* to the texture color. The default
-    texture is grey, so just setting the background color will give
-    a darker result. To set a plain color, set the
-    :attr:`background_normal` to ``''``.
-
-    .. versionadded:: 1.0.8
-
-    The :attr:`background_color` is a
-    :class:`~kivy.properties.ColorProperty` and defaults to [1, 1, 1, 1].
-
-    .. versionchanged:: 2.0.0
-        Changed from :class:`~kivy.properties.ListProperty` to
-        :class:`~kivy.properties.ColorProperty`.
+    :attr:`state` is an :class:`~kivy.properties.OptionProperty` and defaults
+    to 'normal'.
     '''
 
-    background_normal = StringProperty(
-        'atlas://data/images/defaulttheme/button')
-    '''Background image of the button used for the default graphical
-    representation when the button is not pressed.
-
-    .. versionadded:: 1.0.4
-
-    :attr:`background_normal` is a :class:`~kivy.properties.StringProperty`
-    and defaults to 'atlas://data/images/defaulttheme/button'.
-    '''
-
-    background_down = StringProperty(
-        'atlas://data/images/defaulttheme/button_pressed')
-    '''Background image of the button used for the default graphical
-    representation when the button is pressed.
-
-    .. versionadded:: 1.0.4
-
-    :attr:`background_down` is a :class:`~kivy.properties.StringProperty` and
-    defaults to 'atlas://data/images/defaulttheme/button_pressed'.
-    '''
-
-    background_disabled_normal = StringProperty(
-        'atlas://data/images/defaulttheme/button_disabled')
-    '''Background image of the button used for the default graphical
-    representation when the button is disabled and not pressed.
+    last_touch = ObjectProperty(None)
+    '''Contains the last relevant touch received by the Button. This can
+    be used in `on_press` or `on_release` in order to know which touch
+    dispatched the event.
 
     .. versionadded:: 1.8.0
 
-    :attr:`background_disabled_normal` is a
-    :class:`~kivy.properties.StringProperty` and defaults to
-    'atlas://data/images/defaulttheme/button_disabled'.
+    :attr:`last_touch` is a :class:`~kivy.properties.ObjectProperty` and
+    defaults to `None`.
     '''
 
-    background_disabled_down = StringProperty(
-        'atlas://data/images/defaulttheme/button_disabled_pressed')
-    '''Background image of the button used for the default graphical
-    representation when the button is disabled and pressed.
+    min_state_time = NumericProperty(0)
+    '''The minimum period of time which the widget must remain in the
+    `'down'` state.
 
-    .. versionadded:: 1.8.0
+    .. versionadded:: 1.9.1
 
-    :attr:`background_disabled_down` is a
-    :class:`~kivy.properties.StringProperty` and defaults to
-    'atlas://data/images/defaulttheme/button_disabled_pressed'.
+    :attr:`min_state_time` is a float and defaults to 0.035. This value is
+    taken from :class:`~kivy.config.Config`.
     '''
 
-    border = ListProperty([16, 16, 16, 16])
-    '''Border used for :class:`~kivy.graphics.vertex_instructions.BorderImage`
-    graphics instruction. Used with :attr:`background_normal` and
-    :attr:`background_down`. Can be used for custom backgrounds.
+    always_release = BooleanProperty(False)
+    '''This determines whether or not the widget fires an `on_release` event if
+    the touch_up is outside the widget.
 
-    It must be a list of four values: (bottom, right, top, left). Read the
-    BorderImage instruction for more information about how to use it.
+    .. versionadded:: 1.9.0
 
-    :attr:`border` is a :class:`~kivy.properties.ListProperty` and defaults to
-    (16, 16, 16, 16)
+    .. versionchanged:: 1.10.0
+        The default value is now False.
+
+    :attr:`always_release` is a :class:`~kivy.properties.BooleanProperty` and
+    defaults to `False`.
     '''
+
+    def __init__(self, **kwargs):
+        self.register_event_type('on_press')
+        self.register_event_type('on_release')
+        if 'min_state_time' not in kwargs:
+            self.min_state_time = float(Config.get('graphics',
+                                                   'min_state_time'))
+        super(ButtonBehavior, self).__init__(**kwargs)
+        self.__state_event = None
+        self.__touch_time = None
+        self.fbind('state', self.cancel_event)
+
+    def _do_press(self):
+        self.state = 'down'
+
+    def _do_release(self, *args):
+        self.state = 'normal'
+
+    def cancel_event(self, *args):
+        if self.__state_event:
+            self.__state_event.cancel()
+            self.__state_event = None
+
+    def on_touch_down(self, touch):
+        if super(ButtonBehavior, self).on_touch_down(touch):
+            return True
+        if touch.is_mouse_scrolling:
+            return False
+        if not self.collide_point(touch.x, touch.y):
+            return False
+        if self in touch.ud:
+            return False
+        touch.grab(self)
+        touch.ud[self] = True
+        self.last_touch = touch
+        self.__touch_time = time()
+        self._do_press()
+        self.dispatch('on_press')
+        return True
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is self:
+            return True
+        if super(ButtonBehavior, self).on_touch_move(touch):
+            return True
+        return self in touch.ud
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is not self:
+            return super(ButtonBehavior, self).on_touch_up(touch)
+        assert self in touch.ud
+        try:
+            touch.ungrab(self)
+            self.last_touch = touch
+
+            if (not self.always_release and
+                    not self.collide_point(*touch.pos)):
+                self._do_release()
+                return
+
+            touchtime = time() - self.__touch_time
+            if touchtime < self.min_state_time:
+                self.__state_event = Clock.schedule_once(
+                    self._do_release, self.min_state_time - touchtime)
+            else:
+                self._do_release()
+            self.dispatch('on_release')
+            return True
+        except:
+            error = format_exc()
+            global_idmap['app'].Parent.logger.error(error)
+
+    def on_press(self):
+        pass
+
+    def on_release(self):
+        pass
+
+    def trigger_action(self, duration=0.1):
+        '''Trigger whatever action(s) have been bound to the button by calling
+        both the on_press and on_release callbacks.
+
+        This is similar to a quick button press without using any touch events,
+        but note that like most kivy code, this is not guaranteed to be safe to
+        call from external threads. If needed use
+        :class:`Clock <kivy.clock.Clock>` to safely schedule this function and
+        the resulting callbacks to be called from the main thread.
+
+        Duration is the length of the press in seconds. Pass 0 if you want
+        the action to happen instantly.
+
+        .. versionadded:: 1.8.0
+        '''
+        self._do_press()
+        self.dispatch('on_press')
+
+        def trigger_release(dt):
+            self._do_release()
+            self.dispatch('on_release')
+        if not duration:
+            trigger_release(0)
+        else:
+            Clock.schedule_once(trigger_release, duration)
