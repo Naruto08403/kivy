@@ -26,7 +26,7 @@ from kivy import kivy_data_dir
 from kivy.context import register_context
 from kivy.resources import resource_find
 from kivy._event import Observable, EventDispatcher
-
+from traceback import format_exc
 __all__ = ('Observable', 'Builder', 'BuilderBase', 'BuilderException')
 
 
@@ -56,8 +56,12 @@ def get_proxy(widget):
 
 
 def custom_callback(__kvlang__, idmap, *largs, **kwargs):
-    idmap['args'] = largs
-    exec(__kvlang__.co_value, idmap)
+    try:
+        idmap['args'] = largs
+        exec(__kvlang__.co_value, idmap)
+    except:
+        error = format_exc()
+        global_idmap['app'].Parent.logger.error(error)
 
 
 def call_fn(args, instance, v):
